@@ -5,15 +5,6 @@
 
 namespace sto {
 
-struct AdamConfig {
-    double learning_rate{0.02};
-    double beta1{0.9};
-    double beta2{0.999};
-    double epsilon{1e-8};
-    double l2{1e-5};
-    std::size_t steps{500};
-};
-
 // A convex combination model: output = sum(softmax(logits[i]) * x[i]).
 // Training minimizes mean squared error against scalar targets.
 class SoftmaxRegressor {

@@ -474,3 +474,31 @@ The architecture is built around a simple but powerful pattern:
 - no future leakage
 
 This is mathematically coherent for cross-period spread-type products and follows the training schedule you described.
+
+### Optimizer config: `AdamConfig`
+
+The optimizer hyperparameters are not market parameters. They are training settings for the softmax regressor. They live in the nested config block:
+
+```json
+"AdamConfig": {
+  "learning_rate": 0.02,
+  "beta1": 0.9,
+  "beta2": 0.999,
+  "epsilon": 1e-8,
+  "l2": 1e-5,
+  "steps": 500
+}
+```
+
+Each field means:
+
+- `learning_rate`: step size used by Adam. Smaller values are more stable; larger values train faster but may overshoot.
+- `beta1`: exponential decay for the first-moment estimate. Typical value is near 0.9. It smooths the gradient.
+- `beta2`: exponential decay for the second-moment estimate. Typical value is near 0.999. It smooths squared gradients.
+- `epsilon`: numerical stabilization term to avoid division by zero in the Adam update.
+- `l2`: weight decay term. It helps prevent overfitting and stabilizes under noisy spread regimes.
+- `steps`: number of optimization iterations for the training pass. This is a training budget, not a market parameter.
+
+These values should be tuned when the optimizer is unstable or underfitting, but they are not the same class of parameter as `x1_ticks`, `x2_ticks`, or the rolling feature windows. The latter are regime-state parameters; the Adam block is a training configuration block.
+
+The project keeps this in config instead of hard-coding it in source so that an operator can adjust training stability without changing the model code itself.

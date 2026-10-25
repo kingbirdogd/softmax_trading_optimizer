@@ -5,6 +5,17 @@
 
 namespace sto {
 
+struct AdamConfig {
+    // Learning-rate and first/second moment settings used by the optimizer.
+    // These are not market-state variables; they are training hyperparameters.
+    double learning_rate{0.02};
+    double beta1{0.9};
+    double beta2{0.999};
+    double epsilon{1e-8};
+    double l2{1e-5};
+    std::size_t steps{500};
+};
+
 struct ModelConfig {
     std::size_t fair_price_historical_samples{60};
     std::size_t fair_price_historical_samples_min{30};
@@ -44,6 +55,7 @@ struct ModelConfig {
     std::size_t first_dry_run_day{31};
     std::size_t rolling_feedback_window{10};
     bool carry_position_forward{true};
+    AdamConfig adam{};
 
     static ModelConfig default_config();
     static ModelConfig load_from_file(const std::string& path);

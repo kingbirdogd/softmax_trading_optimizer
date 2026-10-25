@@ -33,5 +33,13 @@
   "warmup_days": 30,
   "first_dry_run_day": 31,
   "rolling_feedback_window": 10,
-  "carry_position_forward": true
+  "carry_position_forward": true,
+  "AdamConfig": {
+    "learning_rate": 0.02,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "epsilon": 1e-8,
+    "l2": 1e-5,
+    "steps": 500
+  }
 }

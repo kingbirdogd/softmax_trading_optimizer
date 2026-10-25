@@ -111,6 +111,7 @@ ModelConfig ModelConfig::default_config() {
     cfg.first_dry_run_day = 31;
     cfg.rolling_feedback_window = 10;
     cfg.carry_position_forward = true;
+    cfg.adam = AdamConfig{0.02, 0.9, 0.999, 1e-8, 1e-5, 500};
     return cfg;
 }
 
@@ -122,14 +123,14 @@ ModelConfig ModelConfig::load_from_file(const std::string& path) {
 
     std::stringstream buffer;
     buffer << in.rdbuf();
-    const std::unordered_map<std::string, std::string> values = parse_json_object(buffer.str());
+    std::unordered_map<std::string, std::string> values = parse_json_object(buffer.str());
 
     ModelConfig cfg = default_config();
-
     const auto has_key = [&](const std::string& k) {
         return values.find(k) != values.end();
     };
 
+    // Parse the top-level model settings.
     if (has_key("fair_price_historical_samples")) {
         cfg.fair_price_historical_samples = read_size_t(values.at("fair_price_historical_samples"), cfg.fair_price_historical_samples);
     }
@@ -234,6 +235,29 @@ ModelConfig ModelConfig::load_from_file(const std::string& path) {
     }
     if (has_key("carry_position_forward")) {
         cfg.carry_position_forward = read_bool(values.at("carry_position_forward"), cfg.carry_position_forward);
+    }
+
+    if (has_key("AdamConfig")) {
+        const std::string nested = values.at("AdamConfig");
+        const auto nested_keys = parse_json_object("{" + nested + "}");
+        if (nested_keys.find("learning_rate") != nested_keys.end()) {
+            cfg.adam.learning_rate = read_double(nested_keys.at("learning_rate"), cfg.adam.learning_rate);
+        }
+        if (nested_keys.find("beta1") != nested_keys.end()) {
+            cfg.adam.beta1 = read_double(nested_keys.at("beta1"), cfg.adam.beta1);
+        }
+        if (nested_keys.find("beta2") != nested_keys.end()) {
+            cfg.adam.beta2 = read_double(nested_keys.at("beta2"), cfg.adam.beta2);
+        }
+        if (nested_keys.find("epsilon") != nested_keys.end()) {
+            cfg.adam.epsilon = read_double(nested_keys.at("epsilon"), cfg.adam.epsilon);
+        }
+        if (nested_keys.find("l2") != nested_keys.end()) {
+            cfg.adam.l2 = read_double(nested_keys.at("l2"), cfg.adam.l2);
+        }
+        if (nested_keys.find("steps") != nested_keys.end()) {
+            cfg.adam.steps = read_size_t(nested_keys.at("steps"), cfg.adam.steps);
+        }
     }
 
     return cfg;
