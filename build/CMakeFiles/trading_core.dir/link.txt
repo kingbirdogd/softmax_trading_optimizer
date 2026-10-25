@@ -1,2 +1,0 @@
-/usr/bin/ar qc release/lib64/libtrading_core.a CMakeFiles/trading_core.dir/src/config.cpp.o CMakeFiles/trading_core.dir/src/models.cpp.o CMakeFiles/trading_core.dir/src/strategy.cpp.o CMakeFiles/trading_core.dir/src/optimizer.cpp.o CMakeFiles/trading_core.dir/src/replay.cpp.o
-/usr/bin/ranlib release/lib64/libtrading_core.a

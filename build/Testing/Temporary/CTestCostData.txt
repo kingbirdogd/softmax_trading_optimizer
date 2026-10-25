@@ -1,4 +1,0 @@
-SoftmaxTest.BasicSoftmaxIsSymmetric 9 0.00063437
-SoftmaxRegressorTest.PredictsWeightedAverageForZeroLogits 9 0.000255768
-OptimizerTest.SearchFindsBestCandidate 9 0.000218759
----

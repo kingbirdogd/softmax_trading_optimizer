@@ -1,3 +1,0 @@
-/Users/kingbirdogd/softmax_trading_optimizer/build/_deps/googletest-subbuild/CMakeFiles/googletest-populate.dir
-/Users/kingbirdogd/softmax_trading_optimizer/build/_deps/googletest-subbuild/CMakeFiles/edit_cache.dir
-/Users/kingbirdogd/softmax_trading_optimizer/build/_deps/googletest-subbuild/CMakeFiles/rebuild_cache.dir
