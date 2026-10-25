@@ -43,11 +43,11 @@ void SoftmaxRegressor::fit(const std::vector<std::vector<double>>& x,
     }
 }
 
-double FairPriceModel::predict_day31(const std::vector<double>& x) const { return initial.predict(x); }
+double FairPriceModel::predict_next_reference(const std::vector<double>& x) const { return initial.predict(x); }
 double FairPriceModel::update(double prev,double current) const {
     auto w=softmax(update_weights); return w[0]*prev+w[1]*current;
 }
-double RiskModel::predict_day31(const std::vector<double>& x) const {
+double RiskModel::predict_next_risk(const std::vector<double>& x) const {
     // Risk must be non-negative. Feature construction should use non-negative statistics.
     return std::max(0.0, initial.predict(x));
 }

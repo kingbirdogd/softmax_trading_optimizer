@@ -38,7 +38,7 @@ public:
         : FairPriceModel(cfg.fair_price_historical_samples,
                          cfg.fair_price_preopen_prices) {}
     SoftmaxRegressor initial;
-    double predict_day31(const std::vector<double>& x) const;
+    double predict_next_reference(const std::vector<double>& x) const;
     double update(double previous_forecast, double current_price) const;
     std::vector<double> update_weights{0.0, 0.0};
 };
@@ -63,7 +63,7 @@ public:
                     cfg.risk_intraday_spread_mean_samples,
                     cfg.risk_intraday_spread_std_samples) {}
     SoftmaxRegressor initial;
-    double predict_day31(const std::vector<double>& x) const;
+    double predict_next_risk(const std::vector<double>& x) const;
     double update(double previous_risk, double current_rolling_risk) const;
     std::vector<double> update_weights{0.0, 0.0};
 };
