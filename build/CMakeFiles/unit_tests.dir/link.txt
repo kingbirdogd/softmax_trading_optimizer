@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/unit_tests.dir/tests/test_core.cpp.o -o release/bin/unit_tests  release/lib64/libtrading_core.a lib/libgtest_main.a lib/libgtest.a

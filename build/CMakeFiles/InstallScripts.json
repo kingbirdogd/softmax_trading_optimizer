@@ -1,0 +1,9 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/kingbirdogd/softmax_trading_optimizer/build/cmake_install.cmake",
+		"/Users/kingbirdogd/softmax_trading_optimizer/build/_deps/googletest-build/cmake_install.cmake",
+		"/Users/kingbirdogd/softmax_trading_optimizer/build/_deps/googletest-build/googletest/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

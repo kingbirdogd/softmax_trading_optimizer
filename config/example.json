@@ -1,0 +1,9 @@
+{
+  "tick_size": 0.01,
+  "fixed_fee_ticks": 1.0,
+  "x1_ticks": 3.0,
+  "x2_ticks": 3.0,
+  "fee_per_side": 0.0,
+  "quantity": 1.0,
+  "liquidate_at_end": true
+}

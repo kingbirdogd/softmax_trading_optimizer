@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mean-Reversion Softmax Trading Workflow Report</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --card: #ffffff;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #60a5fa;
+      --good: #34d399;
+      --warn: #fbbf24;
+      --bad: #f87171;
+      --line: #374151;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #0b1020 0%, #111827 100%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.7;
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 20px 80px;
+    }
+
+    h1, h2, h3 {
+      margin-bottom: 12px;
+      line-height: 1.3;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-top: 0;
+    }
+
+    h2 {
+      margin-top: 36px;
+      font-size: 1.5rem;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 8px;
+    }
+
+    .lead {
+      font-size: 1.05rem;
+      color: var(--muted);
+      margin-bottom: 30px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+      margin: 18px 0 30px;
+    }
+
+    .card {
+      background: rgba(17, 24, 39, 0.9);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+
+    .card h3 {
+      margin-top: 0;
+      color: var(--accent);
+      font-size: 1.05rem;
+    }
+
+    .kpi {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-top: 8px;
+      color: #f3f4f6;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 14px;
+      margin-top: 20px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 60px 1fr;
+      gap: 18px;
+      background: rgba(17, 24, 39, 0.85);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px 18px;
+    }
+
+    .step-no {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      color: white;
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+
+    .step strong {
+      color: #f9fafb;
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .note {
+      padding: 14px 16px;
+      border-left: 4px solid var(--good);
+      background: rgba(52, 211, 153, 0.08);
+      border-radius: 8px;
+      color: #dcfce7;
+      margin: 14px 0;
+    }
+
+    .warning {
+      border-left-color: var(--warn);
+      background: rgba(251, 191, 36, 0.08);
+      color: #fef3c7;
+    }
+
+    ul, ol {
+      margin-top: 10px;
+      margin-bottom: 20px;
+      padding-left: 22px;
+    }
+
+    li {
+      margin: 8px 0;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(96, 165, 250, 0.12);
+      border: 1px solid rgba(96,165,250,0.4);
+      color: #dbeafe;
+      font-size: 0.9rem;
+    }
+
+    .good-tag { border-color: rgba(52,211,153,0.5); background: rgba(52,211,153,0.08); color: #d1fae5; }
+    .warn-tag { border-color: rgba(251,191,36,0.45); background: rgba(251,191,36,0.08); color: #fef3c7; }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .formula {
+      background: rgba(17, 24, 39, 0.88);
+      border: 1px solid rgba(96, 165, 250, 0.45);
+      border-left: 4px solid var(--accent);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin: 18px 0;
+      color: #f3f4f6;
+      font-size: 1.05rem;
+      line-height: 1.9;
+      letter-spacing: 0.01em;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+
+    .formula strong {
+      color: #bfdbfe;
+      font-weight: 700;
+    }
+
+    .eq-label {
+      display: inline-block;
+      margin-right: 8px;
+      color: var(--accent);
+      font-weight: 700;
+      min-width: 58px;
+    }
+
+    .fraction {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      vertical-align: middle;
+      margin: 0 4px;
+      line-height: 1.15;
+      font-style: italic;
+    }
+
+    .fraction .num,
+    .fraction .den {
+      display: block;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .fraction .bar {
+      display: block;
+      width: 100%;
+      height: 1px;
+      background: rgba(191, 219, 254, 0.85);
+      margin: 2px 0;
+    }
+
+    .sqrt-box {
+      display: inline-block;
+      border-left: 1px solid rgba(191, 219, 254, 0.6);
+      padding-left: 4px;
+      margin-left: 2px;
+      font-style: italic;
+    }
+
+    @media (max-width: 760px) {
+      .two-col { grid-template-columns: 1fr; }
+      h1 { font-size: 2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Mean-Reversion Softmax Trading Workflow</h1>
+    <p class="lead">
+      這份報告說明的是你現在的核心思路：每天收盤後更新模型，下一個交易日用模型交易，並且避免 leakage。
+      這本質上是 rolling walk-forward training，適合跨期、價差、均值回歸類產品。
+    </p>
+
+    <div class="note" style="border-left-color: var(--accent); background: rgba(96, 165, 250, 0.08); color: #dbeafe;">
+      <strong>適用範圍：</strong> 這套模型只適合<strong>多腿套利 / 價差 / basis / cross-contract mean-reversion</strong>標的，並且要求它們根本不太可能長期保持明顯方向性趨勢。它不是通用型方向性交易模型，也不適合單腿、持續向上或向下趨勢的產品。
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>核心假設</h3>
+        <div class="kpi">回歸型策略</div>
+        <p>不是直接預測漲跌，而是預測偏離公平價的程度，以及回歸風險。</p>
+      </div>
+      <div class="card">
+        <h3>訓練方式</h3>
+        <div class="kpi">Walk-forward</div>
+        <p>每天晚上收市後訓練，第二天用訓練後模型進行交易。</p>
+      </div>
+      <div class="card">
+        <h3>兩個中間目標</h3>
+        <div class="kpi">Fair + Risk</div>
+        <p>一個估計公平價，另一個估計風險/波動/偏離強度。</p>
+      </div>
+      <div class="card">
+        <h3>最終目標</h3>
+        <div class="kpi">PnL / RR</div>
+        <p>最後看的是風險調整後收益，而不是單純方向正確率。</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 10px;">
+      <h3>流程圖：Rolling Walk-Forward Training</h3>
+      <svg viewBox="0 0 1020 390" width="100%" height="100%" role="img" aria-label="Rolling walk-forward training flowchart">
+        <defs>
+          <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+            <path d="M0,0 L12,6 L0,12 z" fill="#93c5fd" />
+          </marker>
+          <style>
+            .flow-box { fill: rgba(17,24,39,0.9); stroke: #60a5fa; stroke-width: 2; rx: 16; }
+            .flow-box.alt { stroke: #34d399; }
+            .flow-box.warn { stroke: #fbbf24; }
+            .flow-title { fill: #e5e7eb; font-size: 18px; font-weight: 700; }
+            .flow-text { fill: #cbd5e1; font-size: 13px; }
+            .flow-line { stroke: #93c5fd; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+            .flow-line.alt { stroke: #34d399; }
+            .flow-line.warn { stroke: #fbbf24; }
+          </style>
+        </defs>
+
+        <rect class="flow-box" x="30" y="70" width="150" height="90" />
+        <text class="flow-title" x="105" y="108" text-anchor="middle">Day t</text>
+        <text class="flow-text" x="105" y="128" text-anchor="middle">收盤後整理</text>
+        <text class="flow-text" x="105" y="145" text-anchor="middle">tick + spread + basis</text>
+
+        <rect class="flow-box alt" x="240" y="70" width="180" height="90" />
+        <text class="flow-title" x="330" y="108" text-anchor="middle">Train Fair Model</text>
+        <text class="flow-text" x="330" y="128" text-anchor="middle">今天 + 前 30 天</text>
+        <text class="flow-text" x="330" y="145" text-anchor="middle">目標：下一個交易日公平價</text>
+
+        <rect class="flow-box alt" x="480" y="70" width="180" height="90" />
+        <text class="flow-title" x="570" y="108" text-anchor="middle">Train Risk Model</text>
+        <text class="flow-text" x="570" y="128" text-anchor="middle">同樣窗口</text>
+        <text class="flow-text" x="570" y="145" text-anchor="middle">目標：風險 / 波動 / 偏離強度</text>
+
+        <rect class="flow-box warn" x="720" y="70" width="170" height="90" />
+        <text class="flow-title" x="805" y="108" text-anchor="middle">Freeze Snapshot</text>
+        <text class="flow-text" x="805" y="128" text-anchor="middle">固定 fair + risk + X1/X2</text>
+        <text class="flow-text" x="805" y="145" text-anchor="middle">不看 Day t+1 資料</text>
+
+        <rect class="flow-box" x="150" y="240" width="220" height="90" />
+        <text class="flow-title" x="260" y="278" text-anchor="middle">Day t+1 Trade</text>
+        <text class="flow-text" x="260" y="298" text-anchor="middle">用模型計算 signal</text>
+        <text class="flow-text" x="260" y="315" text-anchor="middle">entry / add / exit</text>
+
+        <rect class="flow-box" x="440" y="240" width="220" height="90" />
+        <text class="flow-title" x="550" y="278" text-anchor="middle">Execution Result</text>
+        <text class="flow-text" x="550" y="298" text-anchor="middle">PnL / drawdown / win rate</text>
+        <text class="flow-text" x="550" y="315" text-anchor="middle">opportunity + exposure</text>
+
+        <rect class="flow-box alt" x="760" y="240" width="210" height="90" />
+        <text class="flow-title" x="865" y="278" text-anchor="middle">Feedback Loop</text>
+        <text class="flow-text" x="865" y="298" text-anchor="middle">上一 N 天結果回饋</text>
+        <text class="flow-text" x="865" y="315" text-anchor="middle">調整 X1 / X2 / risk gate</text>
+
+        <path class="flow-line" d="M180 115 H240" />
+        <path class="flow-line alt" d="M420 115 H480" />
+        <path class="flow-line alt" d="M660 115 H720" />
+        <path class="flow-line" d="M805 160 V210 H260 V240" />
+        <path class="flow-line" d="M260 330 V340 H550 V330" />
+        <path class="flow-line alt" d="M660 285 H760" />
+        <path class="flow-line warn" d="M865 240 V190 H805 V160" />
+
+        <text x="190" y="100" fill="#93c5fd" font-size="12" font-weight="700">資料進入</text>
+        <text x="436" y="100" fill="#34d399" font-size="12" font-weight="700">模型訓練</text>
+        <text x="678" y="100" fill="#fbbf24" font-size="12" font-weight="700">快照固定</text>
+        <text x="355" y="225" fill="#93c5fd" font-size="12" font-weight="700">下一天交易</text>
+        <text x="635" y="225" fill="#93c5fd" font-size="12" font-weight="700">結果記錄</text>
+        <text x="785" y="225" fill="#34d399" font-size="12" font-weight="700">策略回饋</text>
+      </svg>
+    </div>
+
+    <div class="legend" style="margin-bottom: 12px;">
+      <span class="tag good-tag">公平價估計</span>
+      <span class="tag good-tag">風險估計</span>
+      <span class="tag warn-tag">X1 / X2 調整</span>
+      <span class="tag">回測 / walk-forward</span>
+    </div>
+
+    <h2>1. 核心思想：每天晚上訓練，第二天交易</h2>
+    <div class="timeline">
+      <div class="step">
+        <div class="step-no">1</div>
+        <div>
+          <strong>收盤後整理當天資料</strong>
+          把當天 tick、spread、basis、volatility、rolling statistics 都存起來。將當天資料加進最近 30 天歷史窗。
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-no">2</div>
+        <div>
+          <strong>訓練 fair-price model</strong>
+          使用今天和前 30 天資料，擬合“下一個交易日開市後第 31 口”的公平價 / 公平價差。這是均值回歸交易的基礎。
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-no">3</div>
+        <div>
+          <strong>訓練 risk model</strong>
+          再用相同資料訓練“下一個交易日第 31 口的風險 / 波動 / 偏離強度”。這決定通道寬度、門檻大小、是否加倉。
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-no">4</div>
+        <div>
+          <strong>凍結模型參數</strong>
+          這些模型參數在下一個交易日使用前固定，不再回頭看當天/下一天的資料。這是避免偷看的關鍵。
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-no">5</div>
+        <div>
+          <strong>下一交易日使用模型交易</strong>
+          根據 fair-price 和 risk 計算偏離 signal，判斷是否進場、加倉或平倉。
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      這個流程的本質是：<strong>今天收盤後訓模型，明天用模型交易</strong>。換句話說，模型永遠看不到未來資料。
+    </div>
+
+    <h2>2. 你的訓練目標是什麼？</h2>
+
+    <div class="two-col">
+      <div class="card">
+        <h3>中間目標 1：Fair Price / Fair Spread</h3>
+        <ul>
+          <li>目標是預測下一個交易日開市後第 31 口的合理價</li>
+          <li>這可以看作公平價、便宜/昂貴程度、basis、spread、ratio</li>
+          <li>如果當前價偏離公平價太大，表示有均值回歸機會</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>中間目標 2：Risk / Volatility</h3>
+        <ul>
+          <li>目標是預測風險程度、波動大小、偏離強度</li>
+          <li>這決定通道寬度、加倉門檻、交易規模</li>
+          <li>較高風險意味著要更保守，較低風險可以更放大</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 18px;">
+      <h3>中間目標 3：X1 / X2（策略門檻）</h3>
+      <p>
+        這是你真正談到的最重要策略層目標：X1 是開始交易的偏離門檻，X2 是加倉的再偏離門檻。<br>
+        它不是單純一個 random hyperparameter，而是“交易偏離程度的學習結果”。
+      </p>
+      <ul>
+        <li>X1：進場門檻，偏離公平價多大時開始進場</li>
+        <li>X2：加倉門檻，已持倉下再偏離多少才加碼</li>
+        <li>這兩個值要和 risk model 配合，不能單獨看成固定常數</li>
+      </ul>
+    </div>
+
+    <div class="note warning">
+      <strong>要注意：</strong> 目前很多 AI 只做成「grid search X1/X2」或「手工設定 X1/X2」，這不等於真正訓練了 X1 / X2；
+      真正的訓練應該是：根據當天/前 30 天資料，在收盤後學出下一個交易日的門檻值，再在下一個交易日使用。
+    </div>
+
+    <h2>3. 最終目標：不是預測方向，而是風險調整後收益</h2>
+    <p>你真正想要的最終訓練目標，不是「價格會漲還是跌」，而是：</p>
+    <ul>
+      <li>maximize net PnL</li>
+      <li>or maximize PnL - λ × drawdown</li>
+      <li>並考慮 fees、slippage、spread、滑點、持倉成本</li>
+    </ul>
+    <div class="legend">
+      <span class="tag good-tag">公平價估計</span>
+      <span class="tag good-tag">風險估計</span>
+      <span class="tag warn-tag">X1 / X2 門檻</span>
+      <span class="tag">風險調整收益</span>
+    </div>
+
+    <h2>4. 這個流程為什麼不偷看？</h2>
+    <ol>
+      <li>訓練資料只包含「今天 + 前 30 天」</li>
+      <li>目標是「下一個交易日第 31 口」</li>
+      <li>交易使用的是「當天收盤後固定住的模型」</li>
+      <li>下一天的實際行情不會反過來被拿來訓練同一輪模型</li>
+      <li>這是 out-of-sample / walk-forward 的正確做法</li>
+    </ol>
+
+    <div class="note">
+      如果你在 day t 內用 day t+1 的 tick 去訓練，那就是 leakage；如果你在 day t 收盤後做模型，並且只用 day t 前的資料訓練，
+      那就符合你真正想要的交易流程。
+    </div>
+
+    <h2>5. 實際日運作流程（上線版本）</h2>
+
+    <div class="timeline">
+      <div class="step">
+        <div class="step-no">A</div>
+        <div>
+          <strong>交易日收盤後：盤後更新</strong>
+          收集今日所有 tick、spread、basis、volume、execution 信息，加入歷史窗。
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-no">B</div>
+        <div>
+          <strong>盤後訓練</strong>
+          用當天 + 前 30 天資料，更新 fair-price model 和 risk model。訓練目標是下一個交易日開市後第 31 口的 fitting target。
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-no">C</div>
+        <div>
+          <strong>固定模型參數</strong>
+          這些參數在下一個交易日內不再變動，保證“白天交易”使用的是已完成的 model snapshot。
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-no">D</div>
+        <div>
+          <strong>下一交易日開盤：用模型計算 signal</strong>
+          計算 fair_price、risk、deviation、z-score，根據 X1 / X2 / band 判定 entry / add / exit。
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-no">E</div>
+        <div>
+          <strong>交易日中持倉管理</strong>
+          若偏離持續加大，可能加倉；若接近均值、或風險升高，則縮倉或平倉。
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-no">F</div>
+        <div>
+          <strong>收盤後再回到 A</strong>
+          交易結果記錄進 PnL、drawdown、trade log，供下一輪訓練使用。
+        </div>
+      </div>
+    </div>
+
+    <h2>6. 如果要把這個思想寫成實際規則，最重要的 6 點</h2>
+    <ol>
+      <li>公平價模型：只看到今天和前 30 天的資料</li>
+      <li>風險模型：只看到今天和前 30 天的風險統計</li>
+      <li>目標是下一個交易日的第 31 口，而不是整天</li>
+      <li>交易使用模型參數，而不是當天 re-fit</li>
+      <li>X1 / X2 是策略門檻，需要與 risk 配合調整</li>
+      <li>最終判斷標準是 net PnL / drawdown / fee-adjusted return</li>
+    </ol>
+
+    <h2>7. Softmax 估計器的完整數學形式</h2>
+    <p>這個系統的核心學習單元是 softmax-weighted regressor，幾乎所有的 fair-price 與 risk 估計都來自同樣的結構：</p>
+    <div class="card formula">
+      <div><span class="eq-label">Softmax</span> w<sub>i</sub> = <span class="fraction"><span class="num">e<sup>z<sub>i</sub></sup></span><span class="bar"></span><span class="den">∑<sub>k</sub> e<sup>z<sub>k</sub></sup></span></span></div>
+      <div><span class="eq-label">Output</span> ŷ = ∑<sub>i</sub> w<sub>i</sub>x<sub>i</sub></div>
+    </div>
+    <p>其中：</p>
+    <ul>
+      <li><strong>z</strong> 是每個特徵的 logit</li>
+      <li><strong>w<sub>i</sub></strong> 是 softmax 權重，保證總和為 1</li>
+      <li><strong>x<sub>i</sub></strong> 是特徵值</li>
+      <li><strong>ŷ</strong> 是預測值</li>
+    </ul>
+    <p>若訓練目標是 y，則損失函數為：</p>
+    <div class="formula">
+      <div><span class="eq-label">Loss</span> L = <span class="fraction"><span class="num">1</span><span class="bar"></span><span class="den">N</span></span> ∑<sub>t</sub> (ŷ<sub>t</sub> - y<sub>t</sub>)<sup>2</sup></div>
+    </div>
+    <p>對 logit z<sub>j</sub> 的偏導可寫成：</p>
+    <div class="formula">
+      <div><span class="eq-label">Grad</span> <span class="fraction"><span class="num">∂ŷ</span><span class="bar"></span><span class="den">∂z<sub>j</sub></span></span> = w<sub>j</sub>(x<sub>j</sub> - ŷ)</div>
+    </div>
+    <p>因此使用 Adam 更新時，可計算梯度 g<sub>j</sub> = <span class="fraction"><span class="num">∂L</span><span class="bar"></span><span class="den">∂z<sub>j</sub></span></span>，並做：</p>
+    <div class="formula">
+      <div><span class="eq-label">Adam</span> m<sub>j</sub> ← β<sub>1</sub>m<sub>j</sub> + (1 - β<sub>1</sub>)g<sub>j</sub></div>
+      <div><span class="eq-label"></span> v<sub>j</sub> ← β<sub>2</sub>v<sub>j</sub> + (1 - β<sub>2</sub>)g<sub>j</sub><sup>2</sup></div>
+      <div><span class="eq-label"></span> \hat{m}<sub>j</sub> = <span class="fraction"><span class="num">m<sub>j</sub></span><span class="bar"></span><span class="den">1 - β<sub>1</sub><sup>t</sup></span></span></div>
+      <div><span class="eq-label"></span> \hat{v}<sub>j</sub> = <span class="fraction"><span class="num">v<sub>j</sub></span><span class="bar"></span><span class="den">1 - β<sub>2</sub><sup>t</sup></span></span></div>
+      <div><span class="eq-label"></span> z<sub>j</sub> ← z<sub>j</sub> - η · <span class="fraction"><span class="num">\hat{m}<sub>j</sub></span><span class="bar"></span><span class="den">√{\hat{v}<sub>j</sub>} + ε</span></span></div>
+    </div>
+    <p>這就是模型在收盤後訓練時，對公平價與風險估計做最小平方回歸的本質。</p>
+
+    <h2>8. Fair-value 模型的數學定義</h2>
+    <p>公平價模型不是預測漲跌，而是在當前市場狀態下預測一個「合理價」或「基準價」。它的特徵向量通常是：</p>
+    <div class="formula">
+      <div><span class="eq-label">Feature</span> x<sup>F</sup><sub>t</sub> = [μ<sub>t-1</sub>, μ<sub>t-2</sub>, ..., μ<sub>t-K</sub>, p<sup>preopen</sup><sub>1</sub>, ..., p<sup>preopen</sup><sub>M</sub>]</div>
+    </div>
+    <p>這裡：</p>
+    <ul>
+      <li><strong>μ<sub>t-k</sub></strong> 是最近歷史的均值或基準量</li>
+      <li><strong>p<sup>preopen</sup><sub>m</sub></strong> 是盤前資訊特徵</li>
+      <li><strong>K, M</strong> 由配置決定，可在滾動窗中調整</li>
+    </ul>
+    <p>預測值為：</p>
+    <div class="formula">
+      <div><span class="eq-label">Fair</span> ŷ<sub>fair</sub> = ∑<sub>i</sub> w<sub>i</sub>x<sub>i</sub></div>
+    </div>
+    <p>在交易規則中，偏離程度通常被定義為：</p>
+    <div class="formula">
+      <div><span class="eq-label">Dev</span> dev = price - fair_value</div>
+    </div>
+    <p>當 <strong>dev</strong> 很大時，顯示市場價格離公平價足夠遠，可能出現均值回歸機會；當 <strong>dev</strong> 很小時，則市場更接近均衡狀態。</p>
+
+    <h2>9. Risk 模型的數學定義</h2>
+    <p>Risk 模型用來估計「接下來這個交易日，偏離公平價多大尺度是合理的」。這一層非常重要，因為它不只是「預測價格」，而是預測「市場允許多少偏離」。</p>
+    <div class="formula">
+      <div><span class="eq-label">Feature</span> x<sup>R</sup><sub>t</sub> = [σ<sub>price</sub>, μ<sub>spread</sub>, σ<sub>spread</sub>, σ<sub>intra</sub>, μ<sub>intra spread</sub>, σ<sub>intra spread</sub>]</div>
+      <div><span class="eq-label">Risk</span> ŷ<sub>risk</sub> = max(0, ∑<sub>i</sub> w<sub>i</sub>x<sub>i</sub>)</div>
+    </div>
+    <p>其中：</p>
+    <ul>
+      <li><strong>σ<sub>price</sub></strong> 是價格波動率</li>
+      <li><strong>μ<sub>spread</sub></strong> 是價差均值</li>
+      <li><strong>σ<sub>spread</sub></strong> 是價差波動</li>
+      <li><strong>σ<sub>intra</sub></strong> 是盤中波動程度</li>
+    </ul>
+    <p>風險帶的實際上下界可以寫成：</p>
+    <div class="formula">
+      <div><span class="eq-label">Band</span> upper = fair + fee_ticks + risk</div>
+      <div><span class="eq-label"></span> lower = fair - fee_ticks - risk</div>
+    </div>
+    <p>這表示在上下界之外才考慮進場與加倉，避免在微小偏離時過度交易。</p>
+
+    <h2>10. 滾動回饋與 X1 / X2 的更新理由</h2>
+    <p>這個模型最重要的地方，是把交易結果當作下一輪訓練信號，而不是把一個固定設定當成永遠有效的常數。</p>
+    <p>當天的交易結果可以被壓縮成一個 feedback vector：</p>
+    <div class="formula">
+      <div><span class="eq-label">State</span> f<sub>t</sub> = [avg_realized, avg_floating, avg_total, avg_net, avg_drawdown, avg_opportunity, avg_signal_strength, avg_win_rate, avg_exposure]</div>
+    </div>
+    <p>使用最近 N 天的回饋，可更新策略參數：</p>
+    <div class="formula">
+      <div><span class="eq-label">Update</span> if avg_total &gt; 0 and drawdown small: x<sub>1</sub>, x<sub>2</sub> = x<sub>1</sub>(1 + α), x<sub>2</sub>(1 + α)</div>
+      <div><span class="eq-label"></span> else if win_rate low or drawdown high: x<sub>1</sub>, x<sub>2</sub> = x<sub>1</sub>(1 - β), x<sub>2</sub>(1 - β)</div>
+    </div>
+    <p>也就是：如果交易最近表現良好，則容忍更大偏離去加倉；如果最近輸掉太多，則更保守、縮小門檻，降低過度加碼的風險。</p>
+    <p><strong>X1 / X2 不是固定超參數，而是上一輪表現下的策略種子參數；它們會在每一輪 rolling training 中更新。</strong></p>
+
+    <h2>11. 複雜度與 slow-update（慢速調整層）</h2>
+    <p>第二層 slow-update 的理念是：不是每個 day 都用大小調整策略，而是當整體市場 regime 發生變化時，慢慢調整特徵窗口大小與門檻。</p>
+    <p>例如設定窗口為：</p>
+    <div class="formula">
+      <div><span class="eq-label">Window</span> window<sub>new</sub> = clamp(window<sub>old</sub> + step · regime_score, min_window, max_window)</div>
+    </div>
+    <p>其中 regime_score 可從最近幾日的 win rate, net PnL, drawdown, exposure, signal strength 組合：</p>
+    <div class="formula">
+      <div><span class="eq-label">Score</span> score = α · total_pnl_norm + β · win_rate - γ · drawdown - δ · poor_signal_ratio</div>
+    </div>
+    <p>這樣的設計有三個好處：</p>
+    <ul>
+      <li>避免單日噪音導致窗口大幅振盪</li>
+      <li>當市場更平穩時可以擴大窗口、降低噪音</li>
+      <li>當市場更劇烈時可以縮小窗口、提高敏感度</li>
+    </ul>
+    <p>因此，整個系統其實是「快層 + 慢層」雙層適應：快層處理日內/日與日之間的交易門檻，慢層處理窗口大小與整體 regime。</p>
+
+    <h2>12. 為什麼這個 rolling training 是正確的？</h2>
+    <ol>
+      <li><strong>市場不穩定，regime 會變化</strong>：固定 60 天如果市場轉型，就會變得過時。</li>
+      <li><strong>均值回歸最相關的資訊在最近歷史</strong>：最近的價差與波動代表當前市場狀態，更能反映現階段的回歸強度。</li>
+      <li><strong>交易結果是最直接的 reward signal</strong>：如果模型今天不好，下一輪應該不再用完全相同設定；這是 online learning 的本質。</li>
+      <li><strong>no leakage 是不可少的</strong>：訓練永遠只能看到截至 day t 的資訊，交易永遠使用 day t 收盤後凍結的模型，不可看 day t+1 的資料。</li>
+    </ol>
+
+    <div class="note">
+      這些設計的核心目標不是「猜對方向」，而是：<strong>在每一天都根據上一次交易的真實結果更新下一次的均值回歸門檻與風險判定</strong>。
+      這就是 rolling walk-forward mean-reversion training 的本質。
+    </div>
+
+    <h2>13. 最後一句話</h2>
+    <div class="note">
+      你的模型核心其實是：<strong>每天收盤後學出下一個交易日的公平價和風險，再在下一個交易日用它做均值回歸交易</strong>。
+      這個流程是正確的，而且非常符合“跨期、spread、可回歸產品”的交易邏輯。<br>
+      真正需要補強的是：把 X1 / X2 做成可訓練/可優化的策略參數，而不只是固定搜索值。
+    </div>
+  </div>
+</body>
+</html>
