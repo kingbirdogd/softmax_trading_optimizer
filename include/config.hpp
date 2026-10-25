@@ -59,6 +59,7 @@ struct ModelConfig {
 
     static ModelConfig default_config();
     static ModelConfig load_from_file(const std::string& path);
+    void validate() const;
 };
 
 } // namespace sto

@@ -17,6 +17,7 @@ public:
     void set_logits(const std::vector<double>& v);
 private:
     std::vector<double> logits_, m_, v_;
+    std::size_t adam_step_{0};
 };
 
 // Layer 1: fair-price features are configured through ModelConfig defaults.

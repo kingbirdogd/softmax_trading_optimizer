@@ -418,12 +418,13 @@
     <div class="card" style="margin-top: 18px;">
       <h3>中間目標 3：X1 / X2（策略門檻）</h3>
       <p>
-        這是你真正談到的最重要策略層目標：X1 是開始交易的偏離門檻，X2 是加倉的再偏離門檻。<br>
+        這是策略層的重要目標：X1 是 long-side 加倉的再偏離間距，X2 是 short-side 加倉的再偏離間距。<br>
         它不是單純一個 random hyperparameter，而是“交易偏離程度的學習結果”。
       </p>
       <ul>
-        <li>X1：進場門檻，偏離公平價多大時開始進場</li>
-        <li>X2：加倉門檻，已持倉下再偏離多少才加碼</li>
+        <li>進場：由 fair price、risk band 與 fee buffer 共同決定</li>
+        <li>X1：long 持倉後，價格再向不利方向偏離多少才加碼</li>
+        <li>X2：short 持倉後，價格再向不利方向偏離多少才加碼</li>
         <li>這兩個值要和 risk model 配合，不能單獨看成固定常數</li>
       </ul>
     </div>
@@ -598,10 +599,10 @@
     </div>
     <p>使用最近 N 天的回饋，可更新策略參數：</p>
     <div class="formula">
-      <div><span class="eq-label">Update</span> if avg_total &gt; 0 and drawdown small: x<sub>1</sub>, x<sub>2</sub> = x<sub>1</sub>(1 + α), x<sub>2</sub>(1 + α)</div>
-      <div><span class="eq-label"></span> else if win_rate low or drawdown high: x<sub>1</sub>, x<sub>2</sub> = x<sub>1</sub>(1 - β), x<sub>2</sub>(1 - β)</div>
+      <div><span class="eq-label">Update</span> if avg_net &gt; 0 and drawdown small: x<sub>1</sub>, x<sub>2</sub> = x<sub>1</sub>(1 - α), x<sub>2</sub>(1 - α)</div>
+      <div><span class="eq-label"></span> else if win_rate low or drawdown high: x<sub>1</sub>, x<sub>2</sub> = x<sub>1</sub>(1 + β), x<sub>2</sub>(1 + β)</div>
     </div>
-    <p>也就是：如果交易最近表現良好，則容忍更大偏離去加倉；如果最近輸掉太多，則更保守、縮小門檻，降低過度加碼的風險。</p>
+    <p>也就是：如果交易最近表現良好，則縮小加倉間距；如果最近輸掉太多，則拉大間距，降低過度加碼的風險。</p>
     <p><strong>X1 / X2 不是固定超參數，而是上一輪表現下的策略種子參數；它們會在每一輪 rolling training 中更新。</strong></p>
 
     <h2>11. 複雜度與 slow-update（慢速調整層）</h2>

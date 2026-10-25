@@ -96,7 +96,7 @@ The risk estimator is also a softmax regressor with a non-negative output:
 
 \hat{r}_t = max(0, \sum_j w_j x_j)
 
-This is implemented in `RiskModel::predict_day31` with the clamp to `max(0, ...)` to keep risk non-negative.
+This is implemented in `RiskModel::predict_next_risk` with the clamp to `max(0, ...)` to keep risk non-negative.
 
 ### 2.3 Intermediate target 3: adaptive add-on gate X1 / X2
 
@@ -356,7 +356,7 @@ So the intended logic is:
 - day 32 immediately uses day 31 result as feedback
 - from day 32 onward, the rolling history window is used, capped at 10 days
 
-This means there is no trigger-day gate; there is only a rolling window. The latest result is always available for feedback when the window is non-empty.
+The implementation skips warm-up sessions completely: with the default 30-day warm-up, replay output starts at zero-based day index 30 (calendar day 31). The latest completed result is available to the following session when the feedback window is non-empty.
 
 ## 10. Adaptive windowing (slow layer)
 
@@ -458,7 +458,8 @@ The codebase is intentionally structured to support the workflow described above
 - `TradingStrategy` contains the entry/add/exit logic
 - `ReplayResult` records realized, floating, and total PnL plus reward features
 - `make_recent_feedback_features(...)` and `select_strategy_from_recent_results(...)` implement the daily performance feedback loop
-- `run_walkforward_dry_run(...)` is the cross-day dry run engine for carry-forward positions and rolling training
+- `run_walkforward_dry_run(...)` replays externally supplied, already-frozen forecasts with correct warm-up and carry accounting
+- `run_model_walkforward_dry_run(...)` is the causal baseline: it fits fair/risk models on prior labelled sessions, consumes the current session's pre-open ticks, then trades only the remaining ticks
 
 This is a strong conceptual match for the mean-reversion / cross-period trading design you want, even though production-grade data ingestion and real market microstructure logic still need to be connected to the model.
 

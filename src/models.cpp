@@ -14,6 +14,9 @@ double SoftmaxRegressor::predict(const std::vector<double>& x) const {
 void SoftmaxRegressor::set_logits(const std::vector<double>& v) {
     if (v.size()!=logits_.size()) throw std::invalid_argument("logit size mismatch");
     logits_=v;
+    std::fill(m_.begin(), m_.end(), 0.0);
+    std::fill(v_.begin(), v_.end(), 0.0);
+    adam_step_ = 0;
 }
 
 void SoftmaxRegressor::fit(const std::vector<std::vector<double>>& x,
@@ -21,8 +24,15 @@ void SoftmaxRegressor::fit(const std::vector<std::vector<double>>& x,
     if (x.empty() || x.size()!=y.size()) throw std::invalid_argument("bad training data");
     for (const auto& row:x) if(row.size()!=logits_.size()) throw std::invalid_argument("bad feature width");
     const std::size_t n=logits_.size();
+    if (n == 0) throw std::invalid_argument("model has no features");
+    if (cfg.learning_rate <= 0.0 || cfg.beta1 < 0.0 || cfg.beta1 >= 1.0 ||
+        cfg.beta2 < 0.0 || cfg.beta2 >= 1.0 || cfg.epsilon <= 0.0 ||
+        cfg.l2 < 0.0 || cfg.steps == 0) {
+        throw std::invalid_argument("invalid Adam configuration");
+    }
     const double b1=cfg.beta1, b2=cfg.beta2;
-    for(std::size_t step=1; step<=cfg.steps; ++step) {
+    for(std::size_t local_step=0; local_step<cfg.steps; ++local_step) {
+        ++adam_step_;
         auto w=softmax(logits_);
         std::vector<double> grad(n,0.0);
         for(std::size_t r=0;r<x.size();++r) {
@@ -36,8 +46,8 @@ void SoftmaxRegressor::fit(const std::vector<std::vector<double>>& x,
             grad[j] += cfg.l2*logits_[j];
             m_[j]=b1*m_[j]+(1.0-b1)*grad[j];
             v_[j]=b2*v_[j]+(1.0-b2)*grad[j]*grad[j];
-            const double mh=m_[j]/(1.0-std::pow(b1,static_cast<double>(step)));
-            const double vh=v_[j]/(1.0-std::pow(b2,static_cast<double>(step)));
+            const double mh=m_[j]/(1.0-std::pow(b1,static_cast<double>(adam_step_)));
+            const double vh=v_[j]/(1.0-std::pow(b2,static_cast<double>(adam_step_)));
             logits_[j] -= cfg.learning_rate*mh/(std::sqrt(vh)+cfg.epsilon);
         }
     }

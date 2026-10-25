@@ -1,5 +1,4 @@
 #include "config.hpp"
-#include "optimizer.hpp"
 #include "replay.hpp"
 #include <filesystem>
 #include <iostream>
@@ -35,14 +34,8 @@ int main(int argc, char** argv) {
                   << ", x1_ticks=" << cfg.x1_ticks
                   << ", x2_ticks=" << cfg.x2_ticks << "\n";
 
-        auto objective=[](double x1,double x2) {
-            return 100.0 - (x1-4.0)*(x1-4.0) - 0.7*(x2-6.0)*(x2-6.0);
-        };
-        auto result=search_x1_x2(objective,{1,2,3,4,5,6,7,8,9,10});
-        std::cout << "Baseline X1=" << result.x1
-                  << " X2=" << result.x2
-                  << " objective=" << result.objective << "\n";
-        std::cout << "Build succeeded. Connect your market-data loader and real replay objective next.\n";
+        std::cout << "Configuration is valid. Use run_model_walkforward_dry_run() with timestamp-ordered "
+                     "market sessions to train and replay the causal baseline.\n";
         return 0;
     } catch (const std::exception& e) {
         std::cerr << "Configuration error: " << e.what() << "\n";

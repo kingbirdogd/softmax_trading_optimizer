@@ -39,6 +39,9 @@ struct Position {
 class TradingStrategy {
 public:
     explicit TradingStrategy(StrategyConfig cfg = StrategyConfig::default_config()) : cfg_(cfg) {}
+    // Establishes the session mark before the first decision.  This makes daily
+    // PnL incremental when a position is carried from the previous session.
+    void begin_session(double opening_mark);
     void on_tick(const Tick& tick, double fair_price, double risk);
     ReplayResult finish(const Tick& last_tick);
     const Position& position() const { return pos_; }
@@ -60,6 +63,10 @@ private:
     double equity_peak_{0.0};
     double max_drawdown_{0.0};
     double realized_{0.0};
+    double opening_unrealized_{0.0};
+    bool session_started_{false};
+    std::size_t ticks_seen_{0};
+    std::size_t exposed_ticks_{0};
     double opportunities_{0.0};
     double long_opportunities_{0.0};
     double short_opportunities_{0.0};
@@ -69,5 +76,7 @@ private:
     void open_or_add_long(double price);
     void open_or_add_short(double price);
     void close_position(double price);
+    double unrealized_pnl(double mark) const;
+    void update_equity(double mark);
 };
 }

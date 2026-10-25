@@ -1,266 +1,324 @@
 #include "config.hpp"
 
+#include <cmath>
 #include <fstream>
+#include <limits>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace sto {
 namespace {
 
-std::string trim(const std::string& s) {
-    const auto start = s.find_first_not_of(" \t\r\n");
-    if (start == std::string::npos) return "";
-    const auto end = s.find_last_not_of(" \t\r\n");
-    return s.substr(start, end - start + 1);
-}
+struct JsonValue {
+    enum class Kind { Number, Bool, Object };
 
-bool read_bool(const std::string& value, bool def) {
-    std::string v = trim(value);
-    if (v.empty()) return def;
-    if (v == "1" || v == "true" || v == "True" || v == "TRUE") return true;
-    if (v == "0" || v == "false" || v == "False" || v == "FALSE") return false;
-    throw std::runtime_error("Invalid boolean value: " + value);
-}
+    Kind kind{};
+    double number{};
+    bool boolean{};
+    std::unordered_map<std::string, std::unique_ptr<JsonValue>> object;
+};
 
-std::size_t read_size_t(const std::string& value, std::size_t def) {
-    std::string v = trim(value);
-    if (v.empty()) return def;
-    std::size_t out = 0;
-    std::size_t idx = 0;
-    try {
-        out = std::stoul(v, &idx);
-    } catch (...) {
-        throw std::runtime_error("Invalid size value: " + value);
+class JsonParser {
+public:
+    explicit JsonParser(std::string_view text) : text_(text) {}
+
+    JsonValue parse_document() {
+        skip_space();
+        JsonValue root = parse_object();
+        skip_space();
+        if (pos_ != text_.size()) fail("unexpected trailing content");
+        return root;
     }
-    if (idx != v.size()) throw std::runtime_error("Invalid size value: " + value);
-    return out;
-}
 
-double read_double(const std::string& value, double def) {
-    std::string v = trim(value);
-    if (v.empty()) return def;
-    return std::stod(v);
-}
+private:
+    std::string_view text_;
+    std::size_t pos_{0};
 
-std::unordered_map<std::string, std::string> parse_json_object(const std::string& text) {
-    std::unordered_map<std::string, std::string> values;
-    std::istringstream stream(text);
-    std::string line;
-    while (std::getline(stream, line)) {
-        const auto hash = line.find('#');
-        if (hash != std::string::npos) {
-            line = line.substr(0, hash);
-        }
-        const auto colon = line.find(':');
-        if (colon == std::string::npos) continue;
-        std::string key = trim(line.substr(0, colon));
-        std::string value = trim(line.substr(colon + 1));
-        if (!key.empty()) {
-            if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
-                value = value.substr(1, value.size() - 2);
-            }
-            if (value.size() >= 2 && value.front() == '{' && value.back() == '}') {
-                value = trim(value.substr(1, value.size() - 2));
-            }
-            values[key] = value;
+    [[noreturn]] void fail(const std::string& message) const {
+        throw std::runtime_error("Invalid JSON config at offset " + std::to_string(pos_) + ": " + message);
+    }
+
+    void skip_space() {
+        while (pos_ < text_.size() && (text_[pos_] == ' ' || text_[pos_] == '\n' ||
+                                       text_[pos_] == '\r' || text_[pos_] == '\t')) {
+            ++pos_;
         }
     }
-    return values;
+
+    void expect(char expected) {
+        skip_space();
+        if (pos_ == text_.size() || text_[pos_] != expected) {
+            fail(std::string("expected '") + expected + "'");
+        }
+        ++pos_;
+    }
+
+    std::string parse_string() {
+        expect('"');
+        std::string result;
+        while (pos_ < text_.size()) {
+            const char ch = text_[pos_++];
+            if (ch == '"') return result;
+            if (ch != '\\') {
+                result.push_back(ch);
+                continue;
+            }
+            if (pos_ == text_.size()) fail("unfinished escape sequence");
+            const char escaped = text_[pos_++];
+            switch (escaped) {
+            case '"': result.push_back('"'); break;
+            case '\\': result.push_back('\\'); break;
+            case '/': result.push_back('/'); break;
+            case 'b': result.push_back('\b'); break;
+            case 'f': result.push_back('\f'); break;
+            case 'n': result.push_back('\n'); break;
+            case 'r': result.push_back('\r'); break;
+            case 't': result.push_back('\t'); break;
+            default: fail("unsupported string escape");
+            }
+        }
+        fail("unterminated string");
+    }
+
+    JsonValue parse_object() {
+        JsonValue result;
+        result.kind = JsonValue::Kind::Object;
+        expect('{');
+        skip_space();
+        if (pos_ < text_.size() && text_[pos_] == '}') {
+            ++pos_;
+            return result;
+        }
+        while (true) {
+            skip_space();
+            if (pos_ == text_.size() || text_[pos_] != '"') fail("object key must be a string");
+            const std::string key = parse_string();
+            expect(':');
+            auto value = std::make_unique<JsonValue>(parse_value());
+            if (!result.object.emplace(key, std::move(value)).second) {
+                fail("duplicate key: " + key);
+            }
+            skip_space();
+            if (pos_ == text_.size()) fail("unterminated object");
+            if (text_[pos_] == '}') {
+                ++pos_;
+                return result;
+            }
+            if (text_[pos_] != ',') fail("expected ',' or '}'");
+            ++pos_;
+        }
+    }
+
+    JsonValue parse_value() {
+        skip_space();
+        if (pos_ == text_.size()) fail("missing value");
+        if (text_[pos_] == '{') return parse_object();
+        if (text_.substr(pos_, 4) == "true") {
+            pos_ += 4;
+            return JsonValue{JsonValue::Kind::Bool, 0.0, true, {}};
+        }
+        if (text_.substr(pos_, 5) == "false") {
+            pos_ += 5;
+            return JsonValue{JsonValue::Kind::Bool, 0.0, false, {}};
+        }
+        if (text_[pos_] == '"' || text_[pos_] == '[' || text_.substr(pos_, 4) == "null") {
+            fail("only numbers, booleans, and objects are supported as config values");
+        }
+
+        const std::string remaining(text_.substr(pos_));
+        std::size_t consumed = 0;
+        double value = 0.0;
+        try {
+            value = std::stod(remaining, &consumed);
+        } catch (...) {
+            fail("invalid number");
+        }
+        if (consumed == 0 || !std::isfinite(value)) fail("number must be finite");
+        pos_ += consumed;
+        return JsonValue{JsonValue::Kind::Number, value, false, {}};
+    }
+};
+
+const JsonValue* find_value(const JsonValue& object, const std::string& key) {
+    const auto it = object.object.find(key);
+    return it == object.object.end() ? nullptr : it->second.get();
+}
+
+double number_value(const JsonValue& value, const std::string& name) {
+    if (value.kind != JsonValue::Kind::Number) {
+        throw std::runtime_error("Config field '" + name + "' must be a number");
+    }
+    return value.number;
+}
+
+bool bool_value(const JsonValue& value, const std::string& name) {
+    if (value.kind != JsonValue::Kind::Bool) {
+        throw std::runtime_error("Config field '" + name + "' must be a boolean");
+    }
+    return value.boolean;
+}
+
+std::size_t size_value(const JsonValue& value, const std::string& name) {
+    const double number = number_value(value, name);
+    if (number < 0.0 || std::floor(number) != number ||
+        number > static_cast<double>(std::numeric_limits<std::size_t>::max())) {
+        throw std::runtime_error("Config field '" + name + "' must be a non-negative integer");
+    }
+    return static_cast<std::size_t>(number);
+}
+
+void reject_unknown_keys(const JsonValue& object, const std::unordered_set<std::string>& allowed,
+                         const std::string& object_name) {
+    for (const auto& [key, unused] : object.object) {
+        (void)unused;
+        if (!allowed.contains(key)) {
+            throw std::runtime_error("Unknown config field '" + object_name + key + "'");
+        }
+    }
+}
+
+template <typename T, typename Reader>
+void assign_if_present(const JsonValue& object, const std::string& key, T& target, Reader reader) {
+    if (const JsonValue* value = find_value(object, key)) {
+        target = reader(*value, key);
+    }
+}
+
+void validate_window(std::size_t value, std::size_t minimum, std::size_t maximum,
+                     const std::string& name) {
+    if (minimum == 0 || minimum > maximum || value < minimum || value > maximum) {
+        throw std::runtime_error("Invalid configured window '" + name + "'");
+    }
 }
 
 } // namespace
 
 ModelConfig ModelConfig::default_config() {
-    ModelConfig cfg;
-    cfg.fair_price_historical_samples = 60;
-    cfg.fair_price_historical_samples_min = 30;
-    cfg.fair_price_historical_samples_max = 90;
-    cfg.fair_price_preopen_prices = 30;
-    cfg.fair_price_preopen_prices_min = 10;
-    cfg.fair_price_preopen_prices_max = 60;
-
-    cfg.risk_historical_price_stds = 30;
-    cfg.risk_historical_price_stds_min = 10;
-    cfg.risk_historical_price_stds_max = 60;
-    cfg.risk_historical_spread_means = 30;
-    cfg.risk_historical_spread_means_min = 10;
-    cfg.risk_historical_spread_means_max = 60;
-    cfg.risk_historical_spread_stds = 30;
-    cfg.risk_historical_spread_stds_min = 10;
-    cfg.risk_historical_spread_stds_max = 60;
-    cfg.risk_intraday_price_std_samples = 10;
-    cfg.risk_intraday_price_std_samples_min = 5;
-    cfg.risk_intraday_price_std_samples_max = 20;
-    cfg.risk_intraday_spread_mean_samples = 10;
-    cfg.risk_intraday_spread_mean_samples_min = 5;
-    cfg.risk_intraday_spread_mean_samples_max = 20;
-    cfg.risk_intraday_spread_std_samples = 10;
-    cfg.risk_intraday_spread_std_samples_min = 5;
-    cfg.risk_intraday_spread_std_samples_max = 20;
-
-    cfg.tick_size = 0.01;
-    cfg.fixed_fee_ticks = 1.0;
-    cfg.x1_ticks = 3.0;
-    cfg.x2_ticks = 3.0;
-    cfg.fee_per_side = 0.0;
-    cfg.quantity = 1.0;
-    cfg.liquidate_at_end = true;
-    cfg.warmup_days = 30;
-    cfg.first_dry_run_day = 31;
-    cfg.rolling_feedback_window = 10;
-    cfg.carry_position_forward = true;
-    cfg.adam = AdamConfig{0.02, 0.9, 0.999, 1e-8, 1e-5, 500};
-    return cfg;
+    return ModelConfig{};
 }
 
 ModelConfig ModelConfig::load_from_file(const std::string& path) {
     std::ifstream in(path);
-    if (!in) {
-        throw std::runtime_error("Unable to open config file: " + path);
-    }
+    if (!in) throw std::runtime_error("Unable to open config file: " + path);
 
     std::stringstream buffer;
     buffer << in.rdbuf();
-    std::unordered_map<std::string, std::string> values = parse_json_object(buffer.str());
+    const JsonValue root = JsonParser(buffer.str()).parse_document();
+
+    const std::unordered_set<std::string> top_level{
+        "fair_price_historical_samples", "fair_price_historical_samples_min", "fair_price_historical_samples_max",
+        "fair_price_preopen_prices", "fair_price_preopen_prices_min", "fair_price_preopen_prices_max",
+        "risk_historical_price_stds", "risk_historical_price_stds_min", "risk_historical_price_stds_max",
+        "risk_historical_spread_means", "risk_historical_spread_means_min", "risk_historical_spread_means_max",
+        "risk_historical_spread_stds", "risk_historical_spread_stds_min", "risk_historical_spread_stds_max",
+        "risk_intraday_price_std_samples", "risk_intraday_price_std_samples_min", "risk_intraday_price_std_samples_max",
+        "risk_intraday_spread_mean_samples", "risk_intraday_spread_mean_samples_min", "risk_intraday_spread_mean_samples_max",
+        "risk_intraday_spread_std_samples", "risk_intraday_spread_std_samples_min", "risk_intraday_spread_std_samples_max",
+        "tick_size", "fixed_fee_ticks", "x1_ticks", "x2_ticks", "fee_per_side", "quantity",
+        "liquidate_at_end", "warmup_days", "first_dry_run_day", "rolling_feedback_window",
+        "carry_position_forward", "AdamConfig"
+    };
+    reject_unknown_keys(root, top_level, "");
 
     ModelConfig cfg = default_config();
-    const auto has_key = [&](const std::string& k) {
-        return values.find(k) != values.end();
-    };
+    const auto size_reader = [](const JsonValue& value, const std::string& name) { return size_value(value, name); };
+    const auto number_reader = [](const JsonValue& value, const std::string& name) { return number_value(value, name); };
+    const auto bool_reader = [](const JsonValue& value, const std::string& name) { return bool_value(value, name); };
 
-    // Parse the top-level model settings.
-    if (has_key("fair_price_historical_samples")) {
-        cfg.fair_price_historical_samples = read_size_t(values.at("fair_price_historical_samples"), cfg.fair_price_historical_samples);
-    }
-    if (has_key("fair_price_historical_samples_min")) {
-        cfg.fair_price_historical_samples_min = read_size_t(values.at("fair_price_historical_samples_min"), cfg.fair_price_historical_samples_min);
-    }
-    if (has_key("fair_price_historical_samples_max")) {
-        cfg.fair_price_historical_samples_max = read_size_t(values.at("fair_price_historical_samples_max"), cfg.fair_price_historical_samples_max);
-    }
-    if (has_key("fair_price_preopen_prices")) {
-        cfg.fair_price_preopen_prices = read_size_t(values.at("fair_price_preopen_prices"), cfg.fair_price_preopen_prices);
-    }
-    if (has_key("fair_price_preopen_prices_min")) {
-        cfg.fair_price_preopen_prices_min = read_size_t(values.at("fair_price_preopen_prices_min"), cfg.fair_price_preopen_prices_min);
-    }
-    if (has_key("fair_price_preopen_prices_max")) {
-        cfg.fair_price_preopen_prices_max = read_size_t(values.at("fair_price_preopen_prices_max"), cfg.fair_price_preopen_prices_max);
-    }
-    if (has_key("risk_historical_price_stds")) {
-        cfg.risk_historical_price_stds = read_size_t(values.at("risk_historical_price_stds"), cfg.risk_historical_price_stds);
-    }
-    if (has_key("risk_historical_price_stds_min")) {
-        cfg.risk_historical_price_stds_min = read_size_t(values.at("risk_historical_price_stds_min"), cfg.risk_historical_price_stds_min);
-    }
-    if (has_key("risk_historical_price_stds_max")) {
-        cfg.risk_historical_price_stds_max = read_size_t(values.at("risk_historical_price_stds_max"), cfg.risk_historical_price_stds_max);
-    }
-    if (has_key("risk_historical_spread_means")) {
-        cfg.risk_historical_spread_means = read_size_t(values.at("risk_historical_spread_means"), cfg.risk_historical_spread_means);
-    }
-    if (has_key("risk_historical_spread_means_min")) {
-        cfg.risk_historical_spread_means_min = read_size_t(values.at("risk_historical_spread_means_min"), cfg.risk_historical_spread_means_min);
-    }
-    if (has_key("risk_historical_spread_means_max")) {
-        cfg.risk_historical_spread_means_max = read_size_t(values.at("risk_historical_spread_means_max"), cfg.risk_historical_spread_means_max);
-    }
-    if (has_key("risk_historical_spread_stds")) {
-        cfg.risk_historical_spread_stds = read_size_t(values.at("risk_historical_spread_stds"), cfg.risk_historical_spread_stds);
-    }
-    if (has_key("risk_historical_spread_stds_min")) {
-        cfg.risk_historical_spread_stds_min = read_size_t(values.at("risk_historical_spread_stds_min"), cfg.risk_historical_spread_stds_min);
-    }
-    if (has_key("risk_historical_spread_stds_max")) {
-        cfg.risk_historical_spread_stds_max = read_size_t(values.at("risk_historical_spread_stds_max"), cfg.risk_historical_spread_stds_max);
-    }
-    if (has_key("risk_intraday_price_std_samples")) {
-        cfg.risk_intraday_price_std_samples = read_size_t(values.at("risk_intraday_price_std_samples"), cfg.risk_intraday_price_std_samples);
-    }
-    if (has_key("risk_intraday_price_std_samples_min")) {
-        cfg.risk_intraday_price_std_samples_min = read_size_t(values.at("risk_intraday_price_std_samples_min"), cfg.risk_intraday_price_std_samples_min);
-    }
-    if (has_key("risk_intraday_price_std_samples_max")) {
-        cfg.risk_intraday_price_std_samples_max = read_size_t(values.at("risk_intraday_price_std_samples_max"), cfg.risk_intraday_price_std_samples_max);
-    }
-    if (has_key("risk_intraday_spread_mean_samples")) {
-        cfg.risk_intraday_spread_mean_samples = read_size_t(values.at("risk_intraday_spread_mean_samples"), cfg.risk_intraday_spread_mean_samples);
-    }
-    if (has_key("risk_intraday_spread_mean_samples_min")) {
-        cfg.risk_intraday_spread_mean_samples_min = read_size_t(values.at("risk_intraday_spread_mean_samples_min"), cfg.risk_intraday_spread_mean_samples_min);
-    }
-    if (has_key("risk_intraday_spread_mean_samples_max")) {
-        cfg.risk_intraday_spread_mean_samples_max = read_size_t(values.at("risk_intraday_spread_mean_samples_max"), cfg.risk_intraday_spread_mean_samples_max);
-    }
-    if (has_key("risk_intraday_spread_std_samples")) {
-        cfg.risk_intraday_spread_std_samples = read_size_t(values.at("risk_intraday_spread_std_samples"), cfg.risk_intraday_spread_std_samples);
-    }
-    if (has_key("risk_intraday_spread_std_samples_min")) {
-        cfg.risk_intraday_spread_std_samples_min = read_size_t(values.at("risk_intraday_spread_std_samples_min"), cfg.risk_intraday_spread_std_samples_min);
-    }
-    if (has_key("risk_intraday_spread_std_samples_max")) {
-        cfg.risk_intraday_spread_std_samples_max = read_size_t(values.at("risk_intraday_spread_std_samples_max"), cfg.risk_intraday_spread_std_samples_max);
-    }
-    if (has_key("tick_size")) {
-        cfg.tick_size = read_double(values.at("tick_size"), cfg.tick_size);
-    }
-    if (has_key("fixed_fee_ticks")) {
-        cfg.fixed_fee_ticks = read_double(values.at("fixed_fee_ticks"), cfg.fixed_fee_ticks);
-    }
-    if (has_key("x1_ticks")) {
-        cfg.x1_ticks = read_double(values.at("x1_ticks"), cfg.x1_ticks);
-    }
-    if (has_key("x2_ticks")) {
-        cfg.x2_ticks = read_double(values.at("x2_ticks"), cfg.x2_ticks);
-    }
-    if (has_key("fee_per_side")) {
-        cfg.fee_per_side = read_double(values.at("fee_per_side"), cfg.fee_per_side);
-    }
-    if (has_key("quantity")) {
-        cfg.quantity = read_double(values.at("quantity"), cfg.quantity);
-    }
-    if (has_key("liquidate_at_end")) {
-        cfg.liquidate_at_end = read_bool(values.at("liquidate_at_end"), cfg.liquidate_at_end);
-    }
-    if (has_key("warmup_days")) {
-        cfg.warmup_days = read_size_t(values.at("warmup_days"), cfg.warmup_days);
-    }
-    if (has_key("first_dry_run_day")) {
-        cfg.first_dry_run_day = read_size_t(values.at("first_dry_run_day"), cfg.first_dry_run_day);
-    }
-    if (has_key("rolling_feedback_window")) {
-        cfg.rolling_feedback_window = read_size_t(values.at("rolling_feedback_window"), cfg.rolling_feedback_window);
-    }
-    if (has_key("carry_position_forward")) {
-        cfg.carry_position_forward = read_bool(values.at("carry_position_forward"), cfg.carry_position_forward);
+    assign_if_present(root, "fair_price_historical_samples", cfg.fair_price_historical_samples, size_reader);
+    assign_if_present(root, "fair_price_historical_samples_min", cfg.fair_price_historical_samples_min, size_reader);
+    assign_if_present(root, "fair_price_historical_samples_max", cfg.fair_price_historical_samples_max, size_reader);
+    assign_if_present(root, "fair_price_preopen_prices", cfg.fair_price_preopen_prices, size_reader);
+    assign_if_present(root, "fair_price_preopen_prices_min", cfg.fair_price_preopen_prices_min, size_reader);
+    assign_if_present(root, "fair_price_preopen_prices_max", cfg.fair_price_preopen_prices_max, size_reader);
+    assign_if_present(root, "risk_historical_price_stds", cfg.risk_historical_price_stds, size_reader);
+    assign_if_present(root, "risk_historical_price_stds_min", cfg.risk_historical_price_stds_min, size_reader);
+    assign_if_present(root, "risk_historical_price_stds_max", cfg.risk_historical_price_stds_max, size_reader);
+    assign_if_present(root, "risk_historical_spread_means", cfg.risk_historical_spread_means, size_reader);
+    assign_if_present(root, "risk_historical_spread_means_min", cfg.risk_historical_spread_means_min, size_reader);
+    assign_if_present(root, "risk_historical_spread_means_max", cfg.risk_historical_spread_means_max, size_reader);
+    assign_if_present(root, "risk_historical_spread_stds", cfg.risk_historical_spread_stds, size_reader);
+    assign_if_present(root, "risk_historical_spread_stds_min", cfg.risk_historical_spread_stds_min, size_reader);
+    assign_if_present(root, "risk_historical_spread_stds_max", cfg.risk_historical_spread_stds_max, size_reader);
+    assign_if_present(root, "risk_intraday_price_std_samples", cfg.risk_intraday_price_std_samples, size_reader);
+    assign_if_present(root, "risk_intraday_price_std_samples_min", cfg.risk_intraday_price_std_samples_min, size_reader);
+    assign_if_present(root, "risk_intraday_price_std_samples_max", cfg.risk_intraday_price_std_samples_max, size_reader);
+    assign_if_present(root, "risk_intraday_spread_mean_samples", cfg.risk_intraday_spread_mean_samples, size_reader);
+    assign_if_present(root, "risk_intraday_spread_mean_samples_min", cfg.risk_intraday_spread_mean_samples_min, size_reader);
+    assign_if_present(root, "risk_intraday_spread_mean_samples_max", cfg.risk_intraday_spread_mean_samples_max, size_reader);
+    assign_if_present(root, "risk_intraday_spread_std_samples", cfg.risk_intraday_spread_std_samples, size_reader);
+    assign_if_present(root, "risk_intraday_spread_std_samples_min", cfg.risk_intraday_spread_std_samples_min, size_reader);
+    assign_if_present(root, "risk_intraday_spread_std_samples_max", cfg.risk_intraday_spread_std_samples_max, size_reader);
+    assign_if_present(root, "tick_size", cfg.tick_size, number_reader);
+    assign_if_present(root, "fixed_fee_ticks", cfg.fixed_fee_ticks, number_reader);
+    assign_if_present(root, "x1_ticks", cfg.x1_ticks, number_reader);
+    assign_if_present(root, "x2_ticks", cfg.x2_ticks, number_reader);
+    assign_if_present(root, "fee_per_side", cfg.fee_per_side, number_reader);
+    assign_if_present(root, "quantity", cfg.quantity, number_reader);
+    assign_if_present(root, "liquidate_at_end", cfg.liquidate_at_end, bool_reader);
+    assign_if_present(root, "warmup_days", cfg.warmup_days, size_reader);
+    assign_if_present(root, "first_dry_run_day", cfg.first_dry_run_day, size_reader);
+    assign_if_present(root, "rolling_feedback_window", cfg.rolling_feedback_window, size_reader);
+    assign_if_present(root, "carry_position_forward", cfg.carry_position_forward, bool_reader);
+
+    if (const JsonValue* adam = find_value(root, "AdamConfig")) {
+        if (adam->kind != JsonValue::Kind::Object) {
+            throw std::runtime_error("Config field 'AdamConfig' must be an object");
+        }
+        reject_unknown_keys(*adam, {"learning_rate", "beta1", "beta2", "epsilon", "l2", "steps"}, "AdamConfig.");
+        assign_if_present(*adam, "learning_rate", cfg.adam.learning_rate, number_reader);
+        assign_if_present(*adam, "beta1", cfg.adam.beta1, number_reader);
+        assign_if_present(*adam, "beta2", cfg.adam.beta2, number_reader);
+        assign_if_present(*adam, "epsilon", cfg.adam.epsilon, number_reader);
+        assign_if_present(*adam, "l2", cfg.adam.l2, number_reader);
+        assign_if_present(*adam, "steps", cfg.adam.steps, size_reader);
     }
 
-    if (has_key("AdamConfig")) {
-        const std::string nested = values.at("AdamConfig");
-        const auto nested_keys = parse_json_object("{" + nested + "}");
-        if (nested_keys.find("learning_rate") != nested_keys.end()) {
-            cfg.adam.learning_rate = read_double(nested_keys.at("learning_rate"), cfg.adam.learning_rate);
-        }
-        if (nested_keys.find("beta1") != nested_keys.end()) {
-            cfg.adam.beta1 = read_double(nested_keys.at("beta1"), cfg.adam.beta1);
-        }
-        if (nested_keys.find("beta2") != nested_keys.end()) {
-            cfg.adam.beta2 = read_double(nested_keys.at("beta2"), cfg.adam.beta2);
-        }
-        if (nested_keys.find("epsilon") != nested_keys.end()) {
-            cfg.adam.epsilon = read_double(nested_keys.at("epsilon"), cfg.adam.epsilon);
-        }
-        if (nested_keys.find("l2") != nested_keys.end()) {
-            cfg.adam.l2 = read_double(nested_keys.at("l2"), cfg.adam.l2);
-        }
-        if (nested_keys.find("steps") != nested_keys.end()) {
-            cfg.adam.steps = read_size_t(nested_keys.at("steps"), cfg.adam.steps);
-        }
-    }
-
+    cfg.validate();
     return cfg;
+}
+
+void ModelConfig::validate() const {
+    validate_window(fair_price_historical_samples, fair_price_historical_samples_min,
+                    fair_price_historical_samples_max, "fair_price_historical_samples");
+    validate_window(fair_price_preopen_prices, fair_price_preopen_prices_min,
+                    fair_price_preopen_prices_max, "fair_price_preopen_prices");
+    validate_window(risk_historical_price_stds, risk_historical_price_stds_min,
+                    risk_historical_price_stds_max, "risk_historical_price_stds");
+    validate_window(risk_historical_spread_means, risk_historical_spread_means_min,
+                    risk_historical_spread_means_max, "risk_historical_spread_means");
+    validate_window(risk_historical_spread_stds, risk_historical_spread_stds_min,
+                    risk_historical_spread_stds_max, "risk_historical_spread_stds");
+    validate_window(risk_intraday_price_std_samples, risk_intraday_price_std_samples_min,
+                    risk_intraday_price_std_samples_max, "risk_intraday_price_std_samples");
+    validate_window(risk_intraday_spread_mean_samples, risk_intraday_spread_mean_samples_min,
+                    risk_intraday_spread_mean_samples_max, "risk_intraday_spread_mean_samples");
+    validate_window(risk_intraday_spread_std_samples, risk_intraday_spread_std_samples_min,
+                    risk_intraday_spread_std_samples_max, "risk_intraday_spread_std_samples");
+
+    if (!std::isfinite(tick_size) || tick_size <= 0.0 ||
+        !std::isfinite(fixed_fee_ticks) || fixed_fee_ticks < 0.0 ||
+        !std::isfinite(x1_ticks) || x1_ticks < 0.0 ||
+        !std::isfinite(x2_ticks) || x2_ticks < 0.0 ||
+        !std::isfinite(fee_per_side) || fee_per_side < 0.0 ||
+        !std::isfinite(quantity) || quantity <= 0.0) {
+        throw std::runtime_error("Invalid non-window strategy configuration");
+    }
+    if (warmup_days == 0 || first_dry_run_day != warmup_days + 1 || rolling_feedback_window == 0) {
+        throw std::runtime_error("Invalid walk-forward schedule configuration");
+    }
+    if (!std::isfinite(adam.learning_rate) || adam.learning_rate <= 0.0 ||
+        !std::isfinite(adam.beta1) || adam.beta1 < 0.0 || adam.beta1 >= 1.0 ||
+        !std::isfinite(adam.beta2) || adam.beta2 < 0.0 || adam.beta2 >= 1.0 ||
+        !std::isfinite(adam.epsilon) || adam.epsilon <= 0.0 ||
+        !std::isfinite(adam.l2) || adam.l2 < 0.0 || adam.steps == 0) {
+        throw std::runtime_error("Invalid Adam configuration");
+    }
 }
 
 } // namespace sto
