@@ -211,3 +211,18 @@ This project should be understood as a transparent online learning architecture 
 - no leakage
 
 The model is intentionally simpler than a deep-learning stack, but the logic is coherent and designed to be explainable rather than opaque.
+
+## Last Review, please fix it for other Agent
+重新獨立審查結論：目前版本比上一輪好很多，但仍不能視為可放心驗證策略績效的完成版。最重要的 carry PnL 問題仍會使跨日結果失真。
+優先度	發現	影響
+P0	隔夜持倉的 daily PnL 漏算。新交易日以 ticks[start].mid_price() 作 baseline，卻只結轉 Position、沒有前一日收盤 mark。	前收至次日開盤、以及 pre-open 的持倉價格變化完全消失；同時低估 floating PnL 與 drawdown。見 [replay.cpp (line 215)](/Users/kingbirdogd/softmax_trading_optimizer/src/replay.cpp:215)、[strategy.cpp (line 26)](/Users/kingbirdogd/softmax_trading_optimizer/src/strategy.cpp:26)。
+P1	專案目標是 spread/basis，但程式拒絕所有負 bid、ask、mark 與 price <= 0。	負值價差、負 basis 或零值 reference 無法回測；這與產品範圍衝突。見 [strategy.cpp (line 18)](/Users/kingbirdogd/softmax_trading_optimizer/src/strategy.cpp:18)、[replay.cpp (line 30)](/Users/kingbirdogd/softmax_trading_optimizer/src/replay.cpp:30)。
+P1	沒有最大倉位、最大加碼次數、風險預算或停損。	X1/X2 只控制加碼間距；均值回歸失效時仍可無上限加倉。見 [strategy.cpp (line 68)](/Users/kingbirdogd/softmax_trading_optimizer/src/strategy.cpp:68)。
+P1	timestamp_seconds 從未驗證單調遞增，也沒有 session 邊界驗證。	run_model_walkforward_dry_run() 的因果順序假設依賴輸入 vector 已排序；錯序資料可破壞 no-leakage。
+P1	default model 有 90 個 fair logits、120 個 risk logits，但 rolling 訓練樣本最多取 warmup_days=30。	特徵數遠高於樣本數，softmax 權重嚴重不可識別，500 steps 的結果易受噪音支配。見 [replay.cpp (line 384)](/Users/kingbirdogd/softmax_trading_optimizer/src/replay.cpp:384)。
+P1	slow feature-window adaptation 仍未實作；min/max 只做設定驗證。	不符合 AGENTS 中「慢速、有界、依 regime 更新窗口」的核心要求。
+P1	X1/X2 更新仍完全同方向、同乘數；long/short opportunity fields 沒有進入 feedback。	長短側 regime 不可能分別適應。見 [replay.cpp (line 299)](/Users/kingbirdogd/softmax_trading_optimizer/src/replay.cpp:299)。
+P1	run_walkforward_dry_run() 接受外部 fair/risk 向量，無法驗證它們是否在當下已凍結。	低階 API 仍可能被呼叫端餵入 look-ahead forecast；只有新 model API 的資料順序較受約束。
+P2	first_dry_run_day 只驗證等於 warmup_days + 1，實際執行仍只讀 warmup_days。	設定欄位是冗餘的，改動沒有真正語義。
+P2	自製 parser 對本專案設定足夠，但不是完整 JSON：例如不支援 \\u escape。	不影響目前 default.json，但不宜稱為通用嚴格 JSON parser。
+P2	測試尚未覆蓋隔夜 gap PnL、負價差、時間戳錯序、手續費、無效 config、最大風控與 feedback 分支。	目前 7/7 通過只能證明窄範圍行為，不能證明整體交易會計正確。
